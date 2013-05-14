@@ -60,6 +60,7 @@ esac
 # source the variables file and find out wether ssh-agent is 
 # still running
 #
+[ "x$SSH_AUTH_SOCK" == "x" ] && \
 [ -s $SSH_VARS ] && . $SSH_VARS >/dev/null && \
 RUNNING=`$PS $psA $SSH_AGENT_PID |$GREP [s]sh-agent` 2>/dev/null
 
@@ -67,8 +68,9 @@ RUNNING=`$PS $psA $SSH_AGENT_PID |$GREP [s]sh-agent` 2>/dev/null
 # do we have an agent?
 #
 # 	
+
 if    [       "$SSH_AUTH_SOCK" == "" ] || [ ! -e "$SSH_AUTH_SOCK" ]\
-   || [ ! -S  "$SSH_AUTH_SOCK"       ] || [ "$RUNNING" == "" ]; 
+   || [ ! -S  "$SSH_AUTH_SOCK"       ]
    then
 
 	
@@ -82,7 +84,11 @@ fi
 NOID="The agent has no identities."
 if [ $ASK4PASS ]; then
 	case "$-" in
-	*i*)	[ "$NOID" = "`ssh-add -l `" ] && ssh-add $SSH_AGENT_LIFE ;;
+	*i*) 
+		if [ "$NOID" == "`ssh-add -l `" ]; then 
+			echo "Welcome to $HOSTNAME. Did you forget to forward the ssh agent?";
+			ssh-add $SSH_AGENT_LIFE
+		fi;;
 	*)	## stay quiet  ;;
 	esac
 fi

@@ -1,0 +1,2 @@
+# from .bashrc:
+source ~/.agent-ssh 
