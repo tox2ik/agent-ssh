@@ -1,94 +1,51 @@
-# 
-# ~/.agent-ssh is intended to be sourced from .bashrc 
+# This script is intended to be sourced from .bashrc 
 #
-# It will start a new ssh-agent when you log in or connect you to the 
-# one already running.
+# It will start a new ssh-agent when you log in.
+# If you forward an agent, than that will be used.
+# If the one you started last time has an identity, nothing happens.
 #
-# If there are other ssh-agent(s) running for the current user with 
-# variables (ssh-agent) stored somewhere other than $SSH_VARS, then
-# this script will do nothing to regain or remove them. If you use 
-# pam_ssh, which writes to ~/.ssh/agent-$HOSTNAME, simply set SSH_VARS 
-# to that.
-
-# This script is a modified version of http://www.nyetwork.org/wiki/SSH 
-# and retains the property of being `silent' in order to let things like
-# scp and rsync run smooothly.
+# It will do nothing to existing apents and only try to interact
+# with the one identified by variables in .ssh/vars.sh this script 
 #
-# latest version here: 
-# https://raw.github.com/tox2ik/agent-ssh/master/.agent-ssh
+# original script: http://www.nyetwork.org/wiki/SSH
+# latest version: 
+# https://raw.githubusercontent.com/tox2ik/agent-ssh/master/.agent-ssh
+#  
 # --jaroslav, genja.org
 #
-
-UNAME=/usr/bin/uname
-PS=/bin/ps
-GREP=/bin/grep
-
-# leave unset if you wish to run ssh-add manually 
-
-ASK4PASS=yes
-
-#Time format examples:
 #
-#           600     600 seconds (10 minutes)
-#           10m     10 minutes
-#           1h30m   1 hour 30 minutes (90 minutes)
+ASK4PASS=${ASK4PASS:-yes}
 
-SSH_AGENT_LIFE="-t 2h"
+# Time format examples:
+#    600     600 seconds
+#    10m     10 minutes
+#    1h30m   1 hour 30 minutes
 
+SSH_AGENT_LIFE="-t 7d"
 SSH_VARS=$HOME/.ssh/vars.sh
-SSH_VARS=$HOME/.ssh/agent-$HOSTNAME
-
-# everything below this line should work without intervention
-#
 
 
-#     
-# this ps line works with:
-# Linux procps version 3.2.7 http://procps.sourceforge.net/
-# other *nixes will need different ps arguments 
-# TODO make a case `uname` in Linux)PSARGS=lol;; *BSD)PSARGS=blol;; Darwin)PSARGS=dlol;; esac
-case `$UNAME` in 
-	Linux) psA='aux';;
-	  AIX) psA='-a -o pid,args -p';;
-	SunOS) psA='dunno...';;
-	 *BSD) psA='axwwo pid,args';;
-       Darwin) psA='dunno..';;
-CYGWIN_NT-5.1) psA='-e -f -a -p';;
-esac
+ssh-add -l &>/dev/null; # list identities from forwarded agent
+ADD=$?
+not_running=1
+forwarded_empty=2
 
-
-# source the variables file and find out wether ssh-agent is 
-# still running
-#
-[ "x$SSH_AUTH_SOCK" == "x" ] && \
-[ -s $SSH_VARS ] && . $SSH_VARS >/dev/null && \
-RUNNING=`$PS $psA $SSH_AGENT_PID |$GREP [s]sh-agent` 2>/dev/null
-
-#
-# do we have an agent?
-#
-# 	
-
-if    [       "$SSH_AUTH_SOCK" == "" ] || [ ! -e "$SSH_AUTH_SOCK" ]\
-   || [ ! -S  "$SSH_AUTH_SOCK"       ]
-   then
-
-	
-	VAR=`ssh-agent 2>/dev/null`
-	[ "$?" -eq "0" ] || echo ssh-agent has problems
-	eval $VAR >/dev/null
-	echo $VAR > $SSH_VARS
+if ( [ $ADD -eq $forwarded_empty ] || [ $ADD -eq $not_running ] ) &&
+	[ -s $SSH_VARS ];
+then # there is no agent, but we have a file with ssh-add output
+	echo "source $SSH_VARS &>/dev/null"
+	source $SSH_VARS &>/dev/null
 fi
 
-# ask for pass-phrase on interactive shells 
-NOID="The agent has no identities."
+if ! ssh-add -l &>/dev/null;
+then # nothing forwarded, nothing started/added; run a new agent.
+	ssh-agent > $SSH_VARS 2>/dev/null
+	source $SSH_VARS &>/dev/null
+fi
+
 if [ $ASK4PASS ]; then
-	case "$-" in
-	*i*) 
-		if [ "$NOID" == "`ssh-add -l `" ]; then 
-			echo "Welcome to $HOSTNAME. Did you forget to forward the ssh agent?";
-			ssh-add $SSH_AGENT_LIFE
-		fi;;
-	*)	## stay quiet  ;;
+	case "$-" in # ask for pass-phrase on interactive shells 
+	*i*) [ "The agent has no identities." = "`ssh-add -l `" ] && ssh-add $SSH_AGENT_LIFE ;;
+	*) ## stay quiet on non-interactive shells
 	esac
 fi
